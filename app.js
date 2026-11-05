@@ -50,10 +50,28 @@
 
   rackIndex.addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) go(+b.dataset.i); });
 
+  /* image preloading: a garment is only swapped in once its photo is decoded,
+     so switching colour or turning a piece never shows a blank hanger */
+  const imgCache = new Map();
+  function preload(src) {
+    if (!src) return Promise.resolve();
+    if (!imgCache.has(src)) {
+      const im = new Image();
+      im.src = src;
+      imgCache.set(src, (im.decode ? im.decode() : new Promise((r) => { im.onload = r; })).catch(() => {}));
+    }
+    return imgCache.get(src);
+  }
+  const srcFor = (p, c, side) => (side === "back" && c.back ? c.back : c.photo);
+
   function renderSlot(i, side, fade) {
-    const p = rack[i];
-    slots[i].flip.innerHTML = garmentSVG(p, colorOf(p), side);
-    if (fade) slots[i].flip.firstElementChild.classList.add("fade-in");
+    const s = slots[i], p = rack[i], c = colorOf(p);
+    const token = (s.token = (s.token || 0) + 1);
+    return preload(srcFor(p, c, side)).then(() => {
+      if (slots[i] !== s || s.token !== token) return;   // a newer change won the race
+      s.flip.innerHTML = garmentSVG(p, c, side);
+      if (fade) s.flip.firstElementChild.classList.add("fade-in");
+    });
   }
   function positionTrack(instant) {
     if (!slots.length) return;
@@ -68,6 +86,7 @@
     const next = ((to % n) + n) % n;
     if (next === state.idx) return;
     const dir = Math.sign(to - state.idx);
+    if (flipping) { clearTimeout(flipTimer); slots[state.idx].flip.classList.remove("out"); flipping = false; }
     if (state.side === "back") { renderSlot(state.idx, "front"); state.side = "front"; }
     state.idx = next;
     slots.forEach((s, i) => {
@@ -193,6 +212,8 @@
   $("#pColors").addEventListener("click", (e) => {
     const b = e.target.closest(".swatch"); if (!b) return;
     const p = cur();
+    if (+b.dataset.c === sel[p.id].color) return;
+    if (flipping) { clearTimeout(flipTimer); slots[state.idx].flip.classList.remove("out"); flipping = false; }
     sel[p.id].color = +b.dataset.c;
     if (state.side === "back" && !hasBackView(p, colorOf(p))) state.side = "front";
     renderSlot(state.idx, state.side, true);
@@ -205,16 +226,21 @@
     const b = e.target.closest(".size"); if (!b) return;
     sel[cur().id].size = b.dataset.s; renderPDP();
   });
-  let flipping = false;
+  let flipping = false, flipTimer = 0;
   $("#flipBtn").addEventListener("click", () => {
-    if (flipping) return; flipping = true;
-    const s = slots[state.idx];
+    if (flipping) return;
+    const p = cur(), next = state.side === "front" ? "back" : "front";
+    if (next === "back" && !hasBackView(p, colorOf(p))) return;
+    flipping = true;
+    const idx = state.idx, s = slots[idx];
+    preload(srcFor(p, colorOf(p), next));               // start loading while it turns
     s.flip.classList.add("out");
-    setTimeout(() => {
-      state.side = state.side === "front" ? "back" : "front";
-      renderSlot(state.idx, state.side);
-      s.flip.classList.remove("out"); s.v += 1.2;
-      renderPDP(); flipping = false;
+    flipTimer = setTimeout(() => {
+      state.side = next;
+      renderSlot(idx, next).then(() => {
+        s.flip.classList.remove("out"); s.v += 1.2;
+        flipping = false; renderPDP();
+      });
     }, 240);
   });
   $("#addBtn").addEventListener("click", () => {
@@ -567,5 +593,8 @@
   renderShop();
   renderBag();
   buildRack();
+  // warm the cache with every colourway + back view so swatches switch instantly
+  const warm = () => ALL.forEach((p) => p.colors.forEach((c) => { preload(c.photo); preload(c.back); }));
+  if (document.readyState === "complete") warm(); else window.addEventListener("load", warm);
   if (document.fonts) document.fonts.ready.then(() => { rack.forEach((_, i) => renderSlot(i, i === state.idx ? state.side : "front")); positionTrack(true); });
 })();
