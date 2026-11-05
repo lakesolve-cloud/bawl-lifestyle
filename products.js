@@ -55,7 +55,7 @@ window.BAWL_PRODUCTS = [
     sizes: ["S", "M", "L", "XL"],
     colors: [
       { n: "Black Jersey", b: "#141414", photo: P + "vest-black-front.png", back: P + "vest-black-back.png" },
-      { n: "Cream Knit", b: "#efe6cf", photo: P + "vest-cream-front.png" }
+      { n: "Cream Knit", b: "#efe6cf", photo: P + "vest-cream-front.png?v=2" }
     ],
     gallery: [I + "pa-2.jpg"]
   },
